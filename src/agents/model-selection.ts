@@ -296,12 +296,13 @@ export function resolveConfiguredModelRef(params: {
         return aliasMatch.ref;
       }
 
-      // Default to anthropic if no provider is specified, but warn as this is deprecated.
+      // Default to the configured default provider when no provider is specified.
       const safeTrimmed = sanitizeForLog(trimmed);
+      const dp = params.defaultProvider;
       getLog().warn(
-        `Model "${safeTrimmed}" specified without provider. Falling back to "anthropic/${safeTrimmed}". Please use "anthropic/${safeTrimmed}" in your config.`,
+        `Model "${safeTrimmed}" specified without provider. Falling back to "${dp}/${safeTrimmed}". Please use "${dp}/${safeTrimmed}" in your config.`,
       );
-      return { provider: "anthropic", model: trimmed };
+      return { provider: dp, model: trimmed };
     }
 
     const resolved = resolveModelRefFromString({

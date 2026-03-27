@@ -68,6 +68,19 @@ const coreEntries: CoreCliEntry[] = [
   {
     commands: [
       {
+        name: "signin",
+        description: "Sign in to Arny backend and save JWT for gateway heartbeat",
+        hasSubcommands: false,
+      },
+    ],
+    register: async ({ program }) => {
+      const mod = await import("./register.signin.js");
+      mod.registerSigninCommand(program);
+    },
+  },
+  {
+    commands: [
+      {
         name: "configure",
         description:
           "Interactive configuration for credentials, channels, gateway, and agent defaults",

@@ -19,9 +19,9 @@ let defaultWarnState: WarnState = { warned: false };
 type AnthropicAuthDefaultsMode = "api_key" | "oauth";
 
 const DEFAULT_MODEL_ALIASES: Readonly<Record<string, string>> = {
-  // Anthropic (pi-ai catalog uses "latest" ids without date suffix)
-  opus: "anthropic/claude-opus-4-6",
-  sonnet: "anthropic/claude-sonnet-4-6",
+  // Local-first aliases (avoid pulling Anthropic when users type short names)
+  opus: "ollama/qwen3.5:latest",
+  sonnet: "ollama/qwen3.5:latest",
 
   // OpenAI
   gpt: "openai/gpt-5.4",

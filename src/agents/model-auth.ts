@@ -160,6 +160,39 @@ function resolveSyntheticLocalProviderAuth(params: {
   cfg: OpenClawConfig | undefined;
   provider: string;
 }): ResolvedProviderAuth | null {
+  const normalizedProvider = normalizeProviderId(params.provider);
+
+  if (normalizedProvider === "ollama") {
+    const authOverride = resolveProviderAuthOverride(params.cfg, params.provider);
+    if (authOverride && authOverride !== "api-key") {
+      return null;
+    }
+    const providerConfig = resolveProviderConfig(params.cfg, params.provider);
+    if (!providerConfig) {
+      return {
+        apiKey: OLLAMA_LOCAL_AUTH_MARKER,
+        source: "ollama local default (no models.providers.ollama)",
+        mode: "api-key",
+      };
+    }
+    const hasApiConfig =
+      Boolean(providerConfig.api?.trim()) ||
+      Boolean(providerConfig.baseUrl?.trim()) ||
+      (Array.isArray(providerConfig.models) && providerConfig.models.length > 0);
+    if (!hasApiConfig) {
+      return {
+        apiKey: OLLAMA_LOCAL_AUTH_MARKER,
+        source: "models.providers.ollama (synthetic local key)",
+        mode: "api-key",
+      };
+    }
+    return {
+      apiKey: OLLAMA_LOCAL_AUTH_MARKER,
+      source: "models.providers.ollama (synthetic local key)",
+      mode: "api-key",
+    };
+  }
+
   const providerConfig = resolveProviderConfig(params.cfg, params.provider);
   if (!providerConfig) {
     return null;
@@ -171,15 +204,6 @@ function resolveSyntheticLocalProviderAuth(params: {
     (Array.isArray(providerConfig.models) && providerConfig.models.length > 0);
   if (!hasApiConfig) {
     return null;
-  }
-
-  const normalizedProvider = normalizeProviderId(params.provider);
-  if (normalizedProvider === "ollama") {
-    return {
-      apiKey: OLLAMA_LOCAL_AUTH_MARKER,
-      source: "models.providers.ollama (synthetic local key)",
-      mode: "api-key",
-    };
   }
 
   const authOverride = resolveProviderAuthOverride(params.cfg, params.provider);

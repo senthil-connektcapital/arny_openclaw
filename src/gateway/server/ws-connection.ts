@@ -281,6 +281,7 @@ export function attachGatewayWsConnectionHandler(params: AttachGatewayWsConnecti
       socket,
       upgradeReq,
       connId,
+      gatewayPort: port,
       remoteAddr,
       forwardedFor,
       realIp,

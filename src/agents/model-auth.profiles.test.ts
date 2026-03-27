@@ -330,14 +330,15 @@ describe("getApiKeyForModel", () => {
     });
   });
 
-  it("still throws for ollama when no env/profile/config provider is available", async () => {
+  it("resolves synthetic ollama auth when no models.providers.ollama entry exists", async () => {
     await withEnvAsync({ OLLAMA_API_KEY: undefined }, async () => {
-      await expect(
-        resolveApiKeyForProvider({
-          provider: "ollama",
-          store: { version: 1, profiles: {} },
-        }),
-      ).rejects.toThrow('No API key found for provider "ollama".');
+      const resolved = await resolveApiKeyForProvider({
+        provider: "ollama",
+        store: { version: 1, profiles: {} },
+        cfg: {},
+      });
+      expect(resolved.apiKey).toBe("ollama-local");
+      expect(resolved.source).toContain("ollama local default");
     });
   });
 

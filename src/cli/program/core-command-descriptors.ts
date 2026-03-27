@@ -16,6 +16,11 @@ export const CORE_CLI_COMMAND_DESCRIPTORS = [
     hasSubcommands: false,
   },
   {
+    name: "signin",
+    description: "Sign in to Arny backend and save JWT for gateway heartbeat",
+    hasSubcommands: false,
+  },
+  {
     name: "configure",
     description: "Interactive configuration for credentials, channels, gateway, and agent defaults",
     hasSubcommands: false,

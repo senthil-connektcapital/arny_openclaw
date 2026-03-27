@@ -2,6 +2,7 @@ import type { IncomingMessage } from "node:http";
 import os from "node:os";
 import type { WebSocket } from "ws";
 import { loadConfig } from "../../../config/config.js";
+import { ensureBackendGatewayHeartbeat } from "../../../infra/backend-gateway-heartbeat.js";
 import { verifyDeviceBootstrapToken } from "../../../infra/device-bootstrap.js";
 import {
   deriveDeviceIdFromPublicKey,
@@ -42,7 +43,7 @@ import {
 } from "../../net.js";
 import { resolveNodeCommandAllowlist } from "../../node-command-policy.js";
 import { checkBrowserOrigin } from "../../origin-check.js";
-import { GATEWAY_CLIENT_IDS } from "../../protocol/client-info.js";
+import { GATEWAY_CLIENT_IDS, GATEWAY_CLIENT_MODES } from "../../protocol/client-info.js";
 import {
   ConnectErrorDetailCodes,
   resolveDeviceAuthConnectErrorDetailCode,
@@ -133,6 +134,7 @@ export function attachGatewayWsMessageHandler(params: {
   socket: WebSocket;
   upgradeReq: IncomingMessage;
   connId: string;
+  gatewayPort: number;
   remoteAddr?: string;
   forwardedFor?: string;
   realIp?: string;
@@ -168,6 +170,7 @@ export function attachGatewayWsMessageHandler(params: {
     socket,
     upgradeReq,
     connId,
+    gatewayPort,
     remoteAddr,
     forwardedFor,
     realIp,
@@ -512,6 +515,9 @@ export function attachGatewayWsMessageHandler(params: {
             connectParams.scopes = scopes;
           }
         };
+        const isBackendGatewayRpcClient =
+          connectParams.client.id === GATEWAY_CLIENT_IDS.GATEWAY_CLIENT &&
+          connectParams.client.mode === GATEWAY_CLIENT_MODES.BACKEND;
         const handleMissingDeviceIdentity = (): boolean => {
           const trustedProxyAuthOk = isTrustedProxyControlUiOperatorAuth({
             isControlUi,
@@ -541,6 +547,7 @@ export function attachGatewayWsMessageHandler(params: {
           // allow path, including trusted token-authenticated backend operators.
           if (
             !device &&
+            !isBackendGatewayRpcClient &&
             (decision.kind !== "allow" ||
               (!controlUiAuthPolicy.allowBypass &&
                 !preserveInsecureLocalControlUiScopes &&
@@ -1059,6 +1066,19 @@ export function attachGatewayWsMessageHandler(params: {
         setSocketMaxPayload(socket, MAX_PAYLOAD_BYTES);
         setClient(nextClient);
         setHandshakeState("connected");
+
+        // OpenClaw heartbeat
+        // Start the backend mapping heartbeat when an operator connects.
+        // The heartbeat sender authenticates to the backend using OPENCLAW_ARNY_BACKEND_ACCESS_TOKEN.
+        if (role === "operator") {
+          const authMode = resolvedAuth.mode;
+          ensureBackendGatewayHeartbeat({
+            gatewayUrl: `ws://127.0.0.1:${gatewayPort}`,
+            gatewayToken: authMode === "token" ? resolvedAuth.token?.trim() : undefined,
+            gatewayPassword: authMode === "password" ? resolvedAuth.password?.trim() : undefined,
+          });
+        }
+
         if (role === "node") {
           const context = buildRequestContext();
           const nodeSession = context.nodeRegistry.register(nextClient, {
