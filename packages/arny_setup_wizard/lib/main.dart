@@ -64,12 +64,15 @@ class _WizardShellState extends State<WizardShell> {
   String? _statusMessage;
   
   SystemStatus _status = SystemStatus();
+  BrowserStatus? _browserStatus;
 
   // Inputs
   String _email = "";
   String _password = "";
   String _gatewayPassword = "";
   bool _autoStart = true;
+  bool _enableBrowser = false;
+  BrowserInfo? _selectedBrowser;
   
   // State
   String? _accessToken;
@@ -93,7 +96,7 @@ class _WizardShellState extends State<WizardShell> {
         _assistantName = savedSession['assistantName'];
         _autoStart = savedSession['autoStart'];
         
-        // If we have a valid session, skip to step 2 (configure)
+        // If we have a valid session, skip to step 2 (browser automation)
         _currentStep = 2;
       });
       print("[App] Restored user session for ${savedSession['email']}");
@@ -118,7 +121,7 @@ class _WizardShellState extends State<WizardShell> {
   }
 
   void _nextStep() {
-    if (_currentStep < 3) {
+    if (_currentStep < 4) {
       setState(() { _currentStep++; _error = null; _statusMessage = null; });
     }
   }
@@ -278,20 +281,22 @@ class _WizardShellState extends State<WizardShell> {
   Widget _buildStepContent() {
     switch (_currentStep) {
       case 0:
-        return _buildStep1();
+        return _buildStep1(); // System Check
       case 1:
-        return _buildStep2();
+        return _buildStep2(); // Sign In
       case 2:
-        return _buildStep3();
+        return _buildStep3(); // Browser Automation
       case 3:
-        return _buildDoneStep();
+        return _buildStep4(); // Gateway Settings
+      case 4:
+        return _buildDoneStep(); // Done
       default:
         return const SizedBox.shrink();
     }
   }
 
   List<Widget> _buildFooterButtons() {
-    if (_currentStep == 3) {
+    if (_currentStep == 4) {
       return [
         CupertinoButton.filled(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 0),
@@ -310,6 +315,17 @@ class _WizardShellState extends State<WizardShell> {
     } else if (_currentStep == 1) {
       primaryAction = _email.isNotEmpty && _password.isNotEmpty ? _signIn : null;
     } else if (_currentStep == 2) {
+      if (_enableBrowser && _selectedBrowser != null) {
+        primaryAction = () async {
+          await _configureBrowser();
+          _nextStep();
+        };
+        primaryLabel = "Configure Browser";
+      } else {
+        primaryAction = _nextStep;
+        primaryLabel = "Skip Browser";
+      }
+    } else if (_currentStep == 3) {
       primaryAction = _gatewayPassword.isNotEmpty ? _connectGateway : null;
       primaryLabel = "Connect";
     }
@@ -327,7 +343,7 @@ class _WizardShellState extends State<WizardShell> {
           onPressed: _isBusy || _status.allReady ? null : _refreshSystemStatus,
           child: const Text("Refresh", style: TextStyle(fontSize: 13, color: CupertinoColors.black)),
         ),
-      if (_currentStep == 2 && _accessToken != null)
+      if ((_currentStep == 2 || _currentStep == 3) && _accessToken != null)
         CupertinoButton(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 0),
           onPressed: _isBusy ? null : () async {
@@ -449,6 +465,105 @@ class _WizardShellState extends State<WizardShell> {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
+        const Text("Browser Automation", style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 8),
+        const Text("Enable browser automation to let Arny browse the web for you.", style: TextStyle(color: Color(0xFF4A4A4A), fontSize: 13)),
+        const SizedBox(height: 24),
+        
+        // Enable Browser Toggle
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFFD1D1D1)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text("Enable Browser Automation", style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
+                CupertinoSwitch(
+                  value: _enableBrowser,
+                  activeColor: CupertinoColors.activeGreen,
+                  onChanged: (val) async {
+                    setState(() => _enableBrowser = val);
+                    if (val) {
+                      await _checkBrowserStatus();
+                    }
+                  },
+                )
+              ],
+            ),
+          ),
+        ),
+        
+        if (_enableBrowser) ...[
+          const SizedBox(height: 16),
+          if (_browserStatus != null && _browserStatus!.hasAvailableBrowsers) ...[
+            // Browser Selection
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFD1D1D1)),
+              ),
+              child: Column(
+                children: _browserStatus!.availableBrowsers
+                    .where((browser) => browser.isInstalled)
+                    .map((browser) => _buildBrowserRow(browser))
+                    .toList(),
+              ),
+            ),
+          ] else if (_browserStatus != null && !_browserStatus!.hasAvailableBrowsers) ...[
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFD1D1D1)),
+              ),
+              padding: const EdgeInsets.all(16),
+              child: const Row(
+                children: [
+                  Icon(CupertinoIcons.exclamationmark_triangle, color: CupertinoColors.systemOrange, size: 20),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      "No supported browsers found. Please install Chrome, Brave, Edge, or Chromium to enable browser automation.",
+                      style: TextStyle(fontSize: 13, color: Color(0xFF4A4A4A)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+        
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 16),
+            child: Text(_error!, style: const TextStyle(color: CupertinoColors.destructiveRed, fontSize: 13)),
+          )
+        else if (_isBusy && _statusMessage != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 16),
+            child: Row(
+              children: [
+                const CupertinoActivityIndicator(radius: 8),
+                const SizedBox(width: 8),
+                Expanded(child: Text(_statusMessage!, style: const TextStyle(color: CupertinoColors.activeBlue, fontSize: 13, fontWeight: FontWeight.w500))),
+              ],
+            ),
+          )
+      ],
+    );
+  }
+
+  Widget _buildStep4() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
         const Text("Gateway Settings", style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
         const Text("Set a local connection passphrase and configure auto-start.", style: TextStyle(color: Color(0xFF4A4A4A), fontSize: 13)),
@@ -556,5 +671,128 @@ class _WizardShellState extends State<WizardShell> {
         ],
       ),
     );
+  }
+
+  Future<void> _checkBrowserStatus() async {
+    try {
+      setState(() => _isBusy = true);
+      _browserStatus = await OpenClawSystem.checkBrowserStatus();
+      
+      // Auto-select first available browser
+      if (_browserStatus!.hasAvailableBrowsers && _selectedBrowser == null) {
+        _selectedBrowser = _browserStatus!.availableBrowsers.firstWhere((b) => b.isInstalled);
+      }
+      
+      setState(() {});
+    } catch (e) {
+      setState(() => _error = e.toString());
+    } finally {
+      setState(() => _isBusy = false);
+    }
+  }
+
+  Widget _buildBrowserRow(BrowserInfo browser) {
+    final isSelected = _selectedBrowser?.name == browser.name;
+    
+    return GestureDetector(
+      onTap: () {
+        setState(() => _selectedBrowser = browser);
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFFF0F8FF) : Colors.white,
+          border: isSelected ? Border.all(color: CupertinoColors.activeBlue, width: 2) : null,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          children: [
+            _getBrowserIcon(browser.name),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(browser.name, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
+                  Text(browser.description, style: const TextStyle(color: Color(0xFF8E8E93), fontSize: 11)),
+                ],
+              ),
+            ),
+            if (isSelected)
+              const Icon(CupertinoIcons.check_mark_circled_solid, color: CupertinoColors.activeBlue, size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _getBrowserIcon(String browserName) {
+    IconData iconData;
+    Color iconColor;
+    
+    switch (browserName.toLowerCase()) {
+      case 'brave':
+        iconData = CupertinoIcons.shield_fill;
+        iconColor = const Color(0xFFFB542B);
+        break;
+      case 'chrome':
+        iconData = CupertinoIcons.globe;
+        iconColor = const Color(0xFF4285F4);
+        break;
+      case 'edge':
+        iconData = CupertinoIcons.compass_fill;
+        iconColor = const Color(0xFF0078D4);
+        break;
+      case 'chromium':
+        iconData = CupertinoIcons.circle_fill;
+        iconColor = const Color(0xFF4A90E2);
+        break;
+      default:
+        iconData = CupertinoIcons.globe;
+        iconColor = CupertinoColors.systemGrey;
+    }
+    
+    return Icon(iconData, color: iconColor, size: 24);
+  }
+
+  Future<void> _configureBrowser() async {
+    if (!_enableBrowser || _selectedBrowser == null) {
+      return;
+    }
+    
+    try {
+      setState(() {
+        _isBusy = true;
+        _error = null;
+        _statusMessage = "Configuring browser automation...";
+      });
+      
+      await OpenClawSystem.configureBrowser(_selectedBrowser!);
+      
+      setState(() => _statusMessage = "Verifying gateway is running...");
+      // Ensure gateway is running before testing browser
+      if (!await OpenClawSystem.isGatewayRunning()) {
+        await OpenClawSystem.startGatewayAndVerify();
+      }
+      
+      setState(() => _statusMessage = "Testing browser automation...");
+      await OpenClawSystem.testBrowserAutomation();
+      
+      setState(() => _statusMessage = "Browser automation configured successfully!");
+      await Future.delayed(const Duration(seconds: 1));
+      
+    } catch (e) {
+      setState(() {
+        _error = "Failed to configure browser: $e";
+        _statusMessage = null;
+      });
+      // Don't advance to next step if there's an error
+      return;
+    } finally {
+      setState(() {
+        _isBusy = false;
+        _statusMessage = null;
+      });
+    }
   }
 }

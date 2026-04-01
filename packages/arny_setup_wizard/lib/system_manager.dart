@@ -10,6 +10,36 @@ class SystemStatus {
   bool get allReady => openclawInstalled && ollamaInstalled && ollamaRunning && modelInstalled;
 }
 
+class BrowserInfo {
+  final String name;
+  final String executablePath;
+  final bool isInstalled;
+  final String description;
+
+  BrowserInfo({
+    required this.name,
+    required this.executablePath,
+    required this.isInstalled,
+    required this.description,
+  });
+}
+
+class BrowserStatus {
+  final List<BrowserInfo> availableBrowsers;
+  final BrowserInfo? selectedBrowser;
+  final bool isConfigured;
+  final bool isWorking;
+
+  BrowserStatus({
+    required this.availableBrowsers,
+    this.selectedBrowser,
+    required this.isConfigured,
+    required this.isWorking,
+  });
+
+  bool get hasAvailableBrowsers => availableBrowsers.any((b) => b.isInstalled);
+}
+
 class OpenClawSystem {
   static const String modelName = 'qwen3.5:0.8b';
   
@@ -227,5 +257,256 @@ class OpenClawSystem {
       throw Exception("Failed to enable auto-start: ${result.stderr}");
     }
     print("[OpenClawSystem] Auto-start enabled successfully.");
+  }
+
+  // Browser automation methods
+  static Future<BrowserStatus> checkBrowserStatus() async {
+    print("[OpenClawSystem] Checking browser status...");
+    
+    final availableBrowsers = await _detectAvailableBrowsers();
+    final isConfigured = await _isBrowserConfigured();
+    final selectedBrowser = await _getConfiguredBrowser();
+    final isWorking = isConfigured ? await _testBrowserAutomation() : false;
+    
+    return BrowserStatus(
+      availableBrowsers: availableBrowsers,
+      selectedBrowser: selectedBrowser,
+      isConfigured: isConfigured,
+      isWorking: isWorking,
+    );
+  }
+
+  static Future<List<BrowserInfo>> _detectAvailableBrowsers() async {
+    print("[OpenClawSystem] Detecting available browsers...");
+    
+    final browsers = <BrowserInfo>[];
+    
+    // Define browser paths for macOS
+    final browserPaths = {
+      'Brave': '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser',
+      'Chrome': '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      'Edge': '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+      'Chromium': '/Applications/Chromium.app/Contents/MacOS/Chromium',
+    };
+    
+    final descriptions = {
+      'Brave': 'Privacy-focused browser with built-in ad blocking',
+      'Chrome': 'Google Chrome web browser',
+      'Edge': 'Microsoft Edge web browser',
+      'Chromium': 'Open-source Chromium browser',
+    };
+    
+    for (final entry in browserPaths.entries) {
+      final name = entry.key;
+      final path = entry.value;
+      final isInstalled = await File(path).exists();
+      
+      browsers.add(BrowserInfo(
+        name: name,
+        executablePath: path,
+        isInstalled: isInstalled,
+        description: descriptions[name] ?? 'Chromium-based browser',
+      ));
+      
+      print("[OpenClawSystem] Browser $name: ${isInstalled ? 'Found' : 'Not found'} at $path");
+    }
+    
+    return browsers;
+  }
+
+  static Future<bool> _isBrowserConfigured() async {
+    try {
+      final result = await _runOpenClaw(['config', 'get', 'browser.enabled']);
+      final output = result.stdout.toString().trim();
+      return output == 'true';
+    } catch (e) {
+      print("[OpenClawSystem] Error checking browser config: $e");
+      return false;
+    }
+  }
+
+  static Future<BrowserInfo?> _getConfiguredBrowser() async {
+    try {
+      final result = await _runOpenClaw(['config', 'get', 'browser.executablePath']);
+      final executablePath = result.stdout.toString().trim();
+      
+      if (executablePath.isEmpty || executablePath == 'undefined') {
+        return null;
+      }
+      
+      // Match executable path to browser name
+      if (executablePath.contains('Brave Browser')) {
+        return BrowserInfo(
+          name: 'Brave',
+          executablePath: executablePath,
+          isInstalled: await File(executablePath).exists(),
+          description: 'Privacy-focused browser with built-in ad blocking',
+        );
+      } else if (executablePath.contains('Google Chrome')) {
+        return BrowserInfo(
+          name: 'Chrome',
+          executablePath: executablePath,
+          isInstalled: await File(executablePath).exists(),
+          description: 'Google Chrome web browser',
+        );
+      } else if (executablePath.contains('Microsoft Edge')) {
+        return BrowserInfo(
+          name: 'Edge',
+          executablePath: executablePath,
+          isInstalled: await File(executablePath).exists(),
+          description: 'Microsoft Edge web browser',
+        );
+      } else if (executablePath.contains('Chromium')) {
+        return BrowserInfo(
+          name: 'Chromium',
+          executablePath: executablePath,
+          isInstalled: await File(executablePath).exists(),
+          description: 'Open-source Chromium browser',
+        );
+      }
+      
+      return null;
+    } catch (e) {
+      print("[OpenClawSystem] Error getting configured browser: $e");
+      return null;
+    }
+  }
+
+  static Future<void> configureBrowser(BrowserInfo browser) async {
+    print("[OpenClawSystem] Configuring browser: ${browser.name}");
+    
+    // Enable browser
+    final enableResult = await _runOpenClaw(['config', 'set', 'browser.enabled', 'true']);
+    if (enableResult.exitCode != 0) {
+      throw Exception("Failed to enable browser: ${enableResult.stderr}");
+    }
+    print("[OpenClawSystem] Enabled browser in OpenClaw config");
+    
+    // Set executable path
+    final pathResult = await _runOpenClaw(['config', 'set', 'browser.executablePath', browser.executablePath]);
+    if (pathResult.exitCode != 0) {
+      throw Exception("Failed to set browser path: ${pathResult.stderr}");
+    }
+    print("[OpenClawSystem] Set browser executable path: ${browser.executablePath}");
+    
+    // Set default profile to openclaw
+    final profileResult = await _runOpenClaw(['config', 'set', 'browser.defaultProfile', 'openclaw']);
+    if (profileResult.exitCode != 0) {
+      throw Exception("Failed to set browser profile: ${profileResult.stderr}");
+    }
+    print("[OpenClawSystem] Set default browser profile to 'openclaw'");
+    
+    // Set headless to false for better user experience
+    final headlessResult = await _runOpenClaw(['config', 'set', 'browser.headless', 'false']);
+    if (headlessResult.exitCode != 0) {
+      throw Exception("Failed to set headless mode: ${headlessResult.stderr}");
+    }
+    print("[OpenClawSystem] Set browser to non-headless mode");
+    
+    print("[OpenClawSystem] Browser configuration completed for ${browser.name}");
+    
+    // Check if browser plugin is enabled
+    print("[OpenClawSystem] Checking browser plugin status...");
+    final pluginResult = await _runOpenClaw(['config', 'get', 'plugins.entries.browser.enabled']);
+    if (pluginResult.exitCode == 0 && pluginResult.stdout.toString().trim() == 'false') {
+      print("[OpenClawSystem] Enabling browser plugin...");
+      await _runOpenClaw(['config', 'set', 'plugins.entries.browser.enabled', 'true']);
+    }
+    
+    // Restart gateway to apply browser configuration
+    print("[OpenClawSystem] Restarting gateway to apply browser configuration...");
+    final restartResult = await _runOpenClaw(['gateway', 'restart', '--json']);
+    if (restartResult.exitCode != 0) {
+      throw Exception("Failed to restart gateway: ${restartResult.stderr}");
+    }
+    print("[OpenClawSystem] Gateway restarted successfully");
+    
+    // Wait for gateway to be ready and verify it's running
+    print("[OpenClawSystem] Waiting for gateway to be ready...");
+    await Future.delayed(const Duration(seconds: 5));
+    
+    // Verify gateway is running
+    for (int i = 0; i < 10; i++) {
+      if (await isGatewayRunning()) {
+        print("[OpenClawSystem] Gateway is running and ready");
+        break;
+      }
+      await Future.delayed(const Duration(milliseconds: 500));
+      if (i == 9) {
+        throw Exception("Gateway failed to start after restart");
+      }
+    }
+  }
+
+  static Future<void> testBrowserAutomation() async {
+    print("[OpenClawSystem] Testing browser automation...");
+    
+    // First check if browser command is available
+    final helpResult = await _runOpenClaw(['browser', '--help']);
+    if (helpResult.exitCode != 0) {
+      throw Exception("Browser plugin not available. Make sure the browser plugin is enabled in OpenClaw.");
+    }
+    
+    // Check if browser is configured and enabled
+    final statusResult = await _runOpenClaw(['browser', '--browser-profile', 'openclaw', 'status', '--json']);
+    if (statusResult.exitCode != 0) {
+      throw Exception("Browser status check failed: ${statusResult.stderr}");
+    }
+    
+    // Try to start browser profile
+    final startResult = await _runOpenClaw(['browser', '--browser-profile', 'openclaw', 'start']);
+    if (startResult.exitCode != 0) {
+      throw Exception("Browser start failed: ${startResult.stderr}");
+    }
+    
+    // Wait a moment for browser to initialize
+    await Future.delayed(const Duration(seconds: 3));
+    
+    // Check if browser is running
+    final runningResult = await _runOpenClaw(['browser', '--browser-profile', 'openclaw', 'status']);
+    final output = runningResult.stdout.toString();
+    final isRunning = output.contains('running: true') || output.contains('"running": true');
+    
+    if (!isRunning) {
+      throw Exception("Browser failed to start properly. Status: $output");
+    }
+    
+    print("[OpenClawSystem] Browser automation test successful!");
+  }
+
+  static Future<bool> _testBrowserAutomation() async {
+    try {
+      await testBrowserAutomation();
+      return true;
+    } catch (e) {
+      print("[OpenClawSystem] Browser automation test failed: $e");
+      return false;
+    }
+  }
+
+  static Future<void> startBrowserProfile() async {
+    print("[OpenClawSystem] Starting browser profile...");
+    final result = await _runOpenClaw(['browser', '--browser-profile', 'openclaw', 'start']);
+    if (result.exitCode != 0) {
+      print("[OpenClawSystem] Browser start failed: ${result.stderr}");
+      throw Exception("Failed to start browser: ${result.stderr}");
+    }
+    print("[OpenClawSystem] Browser profile started successfully.");
+  }
+
+  static Future<void> stopBrowserProfile() async {
+    print("[OpenClawSystem] Stopping browser profile...");
+    final result = await _runOpenClaw(['browser', '--browser-profile', 'openclaw', 'stop']);
+    if (result.exitCode != 0) {
+      print("[OpenClawSystem] Browser stop failed: ${result.stderr}");
+      // Don't throw here as stop might fail if browser wasn't running
+    }
+    print("[OpenClawSystem] Browser profile stopped.");
+  }
+
+  static Future<void> disableBrowser() async {
+    print("[OpenClawSystem] Disabling browser automation...");
+    await _runOpenClaw(['config', 'set', 'browser.enabled', 'false']);
+    print("[OpenClawSystem] Browser automation disabled.");
   }
 }
