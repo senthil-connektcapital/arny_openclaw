@@ -15,9 +15,9 @@ import { isRemoteEnvironment, openUrl } from "./setup-browser.js";
 import type { ProviderAuthOptionBag } from "./types.js";
 
 export { OLLAMA_DEFAULT_BASE_URL } from "../agents/ollama-defaults.js";
-export const OLLAMA_DEFAULT_MODEL = "qwen3.5:latest";
+export const OLLAMA_DEFAULT_MODEL = "qwen3.5:0.8b";
 
-const OLLAMA_SUGGESTED_MODELS_LOCAL = ["qwen3.5:latest", "glm-4.7-flash"];
+const OLLAMA_SUGGESTED_MODELS_LOCAL = ["qwen3.5:0.8b", "glm-4.7-flash"];
 const OLLAMA_SUGGESTED_MODELS_CLOUD = ["kimi-k2.5:cloud", "minimax-m2.5:cloud", "glm-5:cloud"];
 type OllamaMode = "remote" | "local";
 type OllamaSetupOptions = ProviderAuthOptionBag & {

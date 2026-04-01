@@ -20,8 +20,8 @@ type AnthropicAuthDefaultsMode = "api_key" | "oauth";
 
 const DEFAULT_MODEL_ALIASES: Readonly<Record<string, string>> = {
   // Local-first aliases (avoid pulling Anthropic when users type short names)
-  opus: "ollama/qwen3.5:latest",
-  sonnet: "ollama/qwen3.5:latest",
+  opus: "ollama/qwen3.5:0.8b",
+  sonnet: "ollama/qwen3.5:0.8b",
 
   // OpenAI
   gpt: "openai/gpt-5.4",
